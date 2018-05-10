@@ -1,0 +1,10 @@
+server {
+    listen 80;
+    server_name breitbart.comdotnetcom.net;
+
+    location / {
+        include proxy_params;
+        proxy_pass http://unix:/home/drex/bcgs/bcgs/bcgs.sock;
+	proxy_read_timeout 1200s;
+    }
+}

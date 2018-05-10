@@ -1,16 +1,16 @@
 # Basic Breitbart comment scraper
 
-This is setup as a flask application so it can be deployed simply. Next
-steps are to add a tiny HTML frontent that allows the user to enter a
-breitbart story URL.
+Provides a HTML frontent for capturing comments on a story on breitbart.
 
-In theory this should work for any disqus client, though you'd need to
-scrape their API Key
+Users who are anonymous or have marked their profiles as "private" in the disqus system will not have their comments recorded or their profiles listed.
+
+In theory this should work for any disqus client, though you'd need to scrape their API Key
+
+Sample gunicorn run.sh and nginx config are included for convience
 
 ## todos:
-
+* Make it a little prettier maybe
 * find the API key automatically instead of hardcoding it
-* add feontent
-* ERROR HANDLING
-* Support for backing database for comments, summary dumps of comments &
-  users
+* Keep running database of users to reduce requests
+
+The main bottleneck is that we can only request comments 100 at a time, but breitbart threads routinely have over 10,000 comments. That's 100 sequential requests!
