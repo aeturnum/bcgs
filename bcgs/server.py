@@ -100,9 +100,33 @@ async def record_users(req_info: RequestInfo, user_ws:WorksheetManager):
         loop.create_task(req_info.add_user(user, user_ws))
 
 
-async def fetch_thread_comments(comments, req_info: RequestInfo):
+async def fetch_thread_comments(req_info: RequestInfo):
+    comments = None
+    params = {
+        'limit': 100,  # god if only we could ask for more
+        'forum': 'breitbartproduction',
+        'api_key': API_KEY,
+        'thread': req_info.thread,
+        'order': 'popular'
+    }
+
     async with create_session() as session:
         while True:
+            # first pass we need comments
+            if comments:
+                params['cursor'] = comments.get('cursor', {}).get('next')
+
+            # https://disqus.com/api/3.0/threads/listPostsThreaded?limit=100&thread=6595667472&forum=breitbartproduction&order=popular&cursor=1%3A0%3A0&api_key=E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F
+            comment_request =  await session.get(
+                'https://disqus.com/api/3.0/threads/listPostsThreaded',
+                params = params
+            )
+
+            comments = await comment_request.json()
+
+            cursor = params.get("cursor", "None")
+            await req_info.print_elapsed_time(f'Fetched Comments {req_info.thread}[{cursor}]')
+
             await req_info.comment_queue.put(comments)
 
             has_next = comments.get('cursor', {}).get('hasNext', False)
@@ -111,25 +135,6 @@ async def fetch_thread_comments(comments, req_info: RequestInfo):
                 await req_info.comment_queue.put(None)
                 # leave
                 break
-
-            cursor = comments.get('cursor', {}).get('next')
-            # https://disqus.com/api/3.0/threads/listPostsThreaded?limit=100&thread=6595667472&forum=breitbartproduction&order=popular&cursor=1%3A0%3A0&api_key=E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F
-
-            comment_request =  await session.get(
-                'https://disqus.com/api/3.0/threads/listPostsThreaded',
-                params = {
-                    'limit': 50, # god if only we could ask for more
-                    'forum': 'breitbartproduction',
-                    'api_key': API_KEY,
-                    'cursor': cursor,
-                    'thread': req_info.thread,
-                    'order': 'popular'
-                }
-            )
-
-            comments = await comment_request.json()
-
-            await req_info.print_elapsed_time(f'Fetched Comments {cursor} & {req_info.thread}')
 
 
 async def fetch_article_info(req_info: RequestInfo):
@@ -188,7 +193,7 @@ async def fetch_comments(request):
         # end synchronous section
 
         await asyncio.gather(
-            fetch_thread_comments(comment_json, req_info),
+            fetch_thread_comments(req_info),
             record_comments(req_info, wb.comment_worksheet),
             record_users(req_info, wb.user_worksheet)
         )
