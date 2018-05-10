@@ -1,5 +1,6 @@
 import requests
 
+import aiohttp
 from constants import API_KEY
 
 class User(object):
@@ -35,6 +36,20 @@ class User(object):
             #     },
         self._basic_info = author_info
         self._detailed_info = None
+
+    async def load(self):
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
+            user_info = await session.get(
+                'https://disqus.com/api/3.0/users/details.json',
+                params={'user': self.id, 'api_key': API_KEY}
+            )
+
+            detail_json = await user_info.json()
+            if detail_json['code'] != 0:
+                print(f'Problem with getting user details from user {self.id}')
+                print(detail_json)
+
+            self._detailed_info = detail_json['response']
 
     def _get_detailed_info(self):
         # https://disqus.com/api/3.0/users/details.json?user=137780765&api_key=E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F
@@ -78,6 +93,7 @@ class User(object):
         #         "username": "disqus_FqhLpDGmTT"
         #     }
         # }
+        print("WARNING: auto-loading user in async version of code!!!!")
         details = requests.get(
             'https://disqus.com/api/3.0/users/details.json',
             {'user': self.id, 'api_key': API_KEY}

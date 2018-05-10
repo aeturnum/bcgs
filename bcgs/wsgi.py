@@ -1,11 +1,7 @@
-from server import app
+from server import aioapp
+from aiohttp import web
 
-
-#bind = "unix:bcgs.sock"
-#workers = 2
-#reload = True
-
-application = app
+application = aioapp
 
 if __name__ == '__main__':
-    app.run()
+    web.run_app(aioapp)
