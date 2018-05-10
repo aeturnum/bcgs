@@ -118,17 +118,18 @@ async def fetch_thread_comments(comments, req_info: RequestInfo):
             comment_request =  await session.get(
                 'https://disqus.com/api/3.0/threads/listPostsThreaded',
                 params = {
-                    'limit': 100, # god if only we could ask for more
+                    'limit': 50, # god if only we could ask for more
                     'forum': 'breitbartproduction',
                     'api_key': API_KEY,
                     'cursor': cursor,
-                    'thread': req_info.thread
+                    'thread': req_info.thread,
+                    'order': 'popular'
                 }
             )
 
             comments = await comment_request.json()
 
-            await req_info.print_elapsed_time(f'Fetched Comments {cursor}')
+            await req_info.print_elapsed_time(f'Fetched Comments {cursor} & {req_info.thread}')
 
 
 async def fetch_article_info(req_info: RequestInfo):
