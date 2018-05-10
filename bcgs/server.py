@@ -79,8 +79,9 @@ def add_comment(comment, req_info, comment_ws:WorkbookManager, user_ws:WorkbookM
             # don't double-add users
             req_info['users'].add(user.id)
             user_ws.append(user.user_info_row)
-    except:
+    except Exception as e:
         print("something went wrong with a comment")
+        print(e)
         print(comment)
 
 def add_comments(current_comments, req_info, comment_ws:WorkbookManager, user_ws:WorkbookManager):
