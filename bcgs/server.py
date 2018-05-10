@@ -85,7 +85,7 @@ async def record_comments(req_info: RequestInfo, comment_ws:WorksheetManager):
         for comment in comments:
             await process_comment(comment, req_info, comment_ws)
 
-        await req_info.print_elapsed_time('Recorded comments')
+        await req_info.print_elapsed_time(f'Recorded {len(comments)} comments')
 
 async def record_users(req_info: RequestInfo, user_ws:WorksheetManager):
     loop = asyncio.get_event_loop()
@@ -112,7 +112,7 @@ async def fetch_thread_comments(comments, req_info: RequestInfo):
                 # leave
                 break
 
-            cursor = comments.get('cursor', {}).get('next', False)
+            cursor = comments.get('cursor', {}).get('next')
             # https://disqus.com/api/3.0/threads/listPostsThreaded?limit=100&thread=6595667472&forum=breitbartproduction&order=popular&cursor=1%3A0%3A0&api_key=E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F
 
             comment_request =  await session.get(
@@ -128,7 +128,7 @@ async def fetch_thread_comments(comments, req_info: RequestInfo):
 
             comments = await comment_request.json()
 
-            await req_info.print_elapsed_time('Fetched Comments')
+            await req_info.print_elapsed_time(f'Fetched Comments {cursor}')
 
 
 async def fetch_article_info(req_info: RequestInfo):
