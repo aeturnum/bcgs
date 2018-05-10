@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 import requests
 import re
 from bs4 import BeautifulSoup
@@ -6,41 +6,14 @@ import json
 import uuid
 from openpyxl import Workbook
 
+from disqus_objects import User
+from worksheet_objects import WorkbookManager
+from constants import API_KEY, DISQUS_ID_RE, THREAD_DATA_RE
+
 app = Flask(__name__)
 
-_DISQUS_ID_RE = "var\s*disqus_identifier\s*=\s*'(\d+)'"
-_THREAD_DATA_RE = '<script type="text/json" id="disqus-forumData">(.*)</script>$'
-# this probably changes
-_API_KEY = "E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F"
-
-# "author": {
-#         "about": "",
-#         "avatar": {
-#             "cache": "//a.disquscdn.com/1519942534/images/noavatar92.png",
-#             "isCustom": false,
-#             "large": {
-#                 "cache": "//a.disquscdn.com/1519942534/images/noavatar92.png",
-#                 "permalink": "https://disqus.com/api/users/avatars/felix1999.jpg"
-#             },
-#             "permalink": "https://disqus.com/api/users/avatars/felix1999.jpg",
-#             "small": {
-#                 "cache": "//a.disquscdn.com/1519942534/images/noavatar32.png",
-#                 "permalink": "https://disqus.com/api/users/avatars/felix1999.jpg"
-#             }
-#         },
-#         "disable3rdPartyTrackers": false,
-#         "id": "5472588",
-#         "isAnonymous": false,
-#         "isPowerContributor": false,
-#         "isPrimary": true,
-#         "isPrivate": true,
-#         "joinedAt": "2010-11-20T04:45:33",
-#         "location": "",
-#         "name": "felix1999",
-#         "profileUrl": "https://disqus.com/by/felix1999/",
-#         "signedUrl": "",
-#         "url": "",
-#         "username": "felix1999"
+#   "author": {
+#         ... (see disqus_objects.py)
 #     },
 #     "canVote": false,
 #     "createdAt": "2018-04-05T02:44:32",
@@ -66,44 +39,57 @@ _API_KEY = "E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F"
 #     "thread": "6595667472"
 # }
 
-_user_labels = ['Global ID', 'Display Name', 'Username', 'Location', 'Join Date', 'Profile Webpage']
-_comment_labels = ['Global ID', 'Author Global Id', 'Source Thread', 'Parent Global ID', 'Sub-thread', 'Date', 'Text', 'Likes']
+_user_labels = [
+    'Global ID', 'Display Name', 'Username', 'Total Post Count',
+    'Total Like Count', 'Location', 'Join Date', 'Profile Webpage'
+]
+_comment_labels = [
+    'Global ID', 'Author Global Id', 'Source Thread', 'Parent Comment Global ID', 'Sub-thread', 'Date', 'Text', 'Likes'
+]
+_sheet_info = ['Story Name', 'Story Url']
 
-def add_comment(comment, req_info, comment_ws, user_ws):
+
+def add_correct_comment_info(user, thread, comment, comment_ws):
+    row = [comment['id'], user.id, thread, comment['parent'], comment['thread']]
+    if not user.private:
+        row.extend([comment['createdAt'], comment['raw_message'], comment['likes']])
+
+    comment_ws.append(row)
+
+
+def add_comment(comment, req_info, comment_ws:WorkbookManager, user_ws:WorkbookManager):
     """
 
     :param dict comment:
     :param dict req_info:
-    :param openpyxl.worksheet.worksheet.Worksheet comment_ws:
-    :param openpyxl.worksheet.worksheet.Worksheet user_ws:
+    :param comment_ws:
+    :param user_ws:
     :return:
     """
-    # print(comment)
-    # print(req_info)
     try:
-        user = comment['author']
-        comment_ws.append([
-            comment['id'], user.get('id', 'Anonymous'), req_info['thread'], comment['parent'],
-            comment['thread'], comment['createdAt'], comment['raw_message'], comment['likes']
-        ])
+        user = User(comment['author'])
 
+        add_correct_comment_info(user, req_info['thread'], comment, comment_ws)
 
-        # check for anonumous users
-        if 'id' in user and user['id'] not in req_info['users']:
+        # for private and anonymous users, do not record information
+        if user.private:
+            return
+
+        if user.id not in req_info['users']:
             # don't double-add users
-            req_info['users'].add(user['id'])
-            user_ws.append([user['id'], user['name'], user['username'], user['location'], user['joinedAt'], user['profileUrl']])
+            req_info['users'].add(user.id)
+            user_ws.append(user.user_info_row)
     except:
         print("something went wrong with a comment")
         print(comment)
 
-def add_comments(current_comments, req_info, comment_ws, user_ws):
+def add_comments(current_comments, req_info, comment_ws:WorkbookManager, user_ws:WorkbookManager):
     """
 
     :param dict current_comments:
     :param dict req_info:
-    :param openpyxl.worksheet.worksheet.Worksheet comment_ws:
-    :param openpyxl.worksheet.worksheet.Worksheet user_ws:
+    :param comment_ws:
+    :param user_ws:
     :return:
     """
     # print(current_comments.keys())
@@ -125,30 +111,52 @@ def get_next_comments(previous_comments, req_info):
         thread = req_info['thread']
         next_comments = requests.get(
             'https://disqus.com/api/3.0/threads/listPostsThreaded',
-            {'limit': 100, 'forum': 'breitbartproduction', 'api_key': _API_KEY, 'cursor': cursor, 'thread': thread}
+            {'limit': 100, 'forum': 'breitbartproduction', 'api_key': API_KEY, 'cursor': cursor, 'thread': thread}
         )
         result = next_comments.json()
 
-    print("got next comment")
     return result
 
-@app.route('/')
-def hello_world():
+
+def fetch_article_info(url):
+    result = {
+        'url': url,
+        'title': "Title not found by tool - email this to aeturnum@gmail.com",
+        'disqus_id': None
+    }
+
+    data = requests.get(url)
+    match = re.search(DISQUS_ID_RE, data.text)
+
+    # if the match is wrong, return an empty id
+    if match:
+
+        result['disqus_id'] = match.group(1)
+
+        title_parser = BeautifulSoup(data.text, 'html.parser')
+        for meta_tag in title_parser.head.find_all('meta'):
+            content = meta_tag.get('content', None)
+            property = meta_tag.get('property', None)
+            if property == 'og:title':
+                result['title'] = content
+
+    return result
+
+
+@app.route('/comments')
+def fetch_comments():
+    url_arg = request.args.get('URL')
     req_info = {
         'users': set(),
         'thread': None
     }
-    data = requests.get('http://www.breitbart.com/california/2018/04/04/report-nasim-aghdams-brother-warned-police-she-might-do-something/')
-    match = re.search(_DISQUS_ID_RE, data.text)
-    if not match:
-        return "error: couldn't find disqus id"
-
-    disqus_id = match.group(1)
+    # 'http://www.breitbart.com/california/2018/04/04/log_report-nasim-aghdams-brother-warned-police-she-might-do-something/'
+    url_info = fetch_article_info(url_arg)
 
     # first_comments = requests.get(f'https://disqus.com/embed/comments/?base=default&f=breitbartproduction&t_i={disqus_id}')
     first_comments = requests.get(
         'https://disqus.com/embed/comments/',
-        params={'base': 'default', 'f': 'breitbartproduction', 't_i': disqus_id}
+        params={'base': 'default', 'f': 'breitbartproduction', 't_i': url_info['disqus_id']}
     )
 
     bs = BeautifulSoup(first_comments.text, 'html.parser')
@@ -158,11 +166,15 @@ def hello_world():
 
     req_info['thread'] = comment_json['response']['thread']['id']
 
-
     wb = Workbook()
-    comments = wb.create_sheet("Comments")
+    main = WorkbookManager(wb.active)
+    main.title = "Comment Source"
+    main.append(_sheet_info)
+    main.append([url_info['title'], url_info['url']])
+
+    comments = WorkbookManager(wb.create_sheet("Comments"))
     comments.append(_comment_labels)
-    users = wb.create_sheet("Users")
+    users = WorkbookManager(wb.create_sheet("Users"))
     users.append(_user_labels)
 
 
@@ -177,8 +189,17 @@ def hello_world():
     wb.save(name)
     return send_from_directory(".", name, attachment_filename="breitbart.xlsx")
 
+@app.route('/')
+def index():
+    return """
+<head></head>
+<body>
+    <h2>Enter Breitbart comment link</h2>
 
-    # return jsonify(comment_json)
-
-if __name__ == '__main__':
-    app.run()
+    <form action="/comments">
+      Comment URL:<br>
+      <input type="text" size="200" name="URL" value="http://www.breitbart.com/jerusalem/2018/05/09/idf-iranian-forces-fire-rockets-israel/">
+      <input type="submit" value="Submit">
+    </form>
+</body>
+    """
