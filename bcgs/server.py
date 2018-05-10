@@ -48,8 +48,9 @@ async def process_comment(comment, req_info: RequestInfo, comment_ws:WorksheetMa
         user = User(comment['author'])
 
         row = [comment['id'], user.id, req_info.thread, comment['parent'], comment['thread']]
-        if not user.private:
-            row.extend([comment['createdAt'], comment['raw_message'], comment['likes']])
+        # decided to add back in comment information
+        # if not user.private:
+        row.extend([comment['createdAt'], comment['raw_message'], comment['likes']])
 
         comment_ws.append(row)
 
