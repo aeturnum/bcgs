@@ -9,5 +9,5 @@ setup(name='bcgs',
       author_email='aeturnum@gmail.com',
       packages=['bcgs'],
       license="MIT",
-      requires=["beautifulsoup4", "requests", "flask", "openpyxl"]
+      install_requires=["beautifulsoup4", "requests", "flask", "openpyxl"]
      )
