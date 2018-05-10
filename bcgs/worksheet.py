@@ -48,9 +48,7 @@ class WorkbookManager(object):
         now = time()
         directory = Path(self._sheet_path)
         for xlsx in directory.iterdir():
-            print(xlsx)
             if now - xlsx.stat().st_ctime > KEEP_XLSX_FOR:
-                print(f'unlinking {xlsx}')
                 xlsx.unlink()
 
 
